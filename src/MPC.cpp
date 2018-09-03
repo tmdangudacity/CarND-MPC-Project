@@ -5,37 +5,28 @@
 
 using CppAD::AD;
 
-unsigned int N  = 25;
-double dt = 0.05;
-
-// This value assumes the model presented in the classroom is used.
-//
-// It was obtained by measuring the radius formed by running the vehicle in the
-// simulator around in a circle with a constant steering angle and velocity on a
-// flat terrain.
-//
-// Lf was tuned until the the radius formed by the simulating the model
-// presented in the classroom matched the previous radius.
-//
-// This is the length from front to CoG that has a similar radius.
-const double Lf = 2.67;
-
-const double REFERENCE_SPEED = 30.0; //Reference speed.
-
-// The solver takes all the state variables and actuator
-// variables in a singular vector. Thus, we should to establish
-// when one variable starts and another ends to make our lifes easier.
-unsigned int x_start     = 0;
-unsigned int y_start     = x_start     + N;
-unsigned int psi_start   = y_start     + N;
-unsigned int v_start     = psi_start   + N;
-unsigned int cte_start   = v_start     + N;
-unsigned int epsi_start  = cte_start   + N;
-unsigned int delta_start = epsi_start  + N;
-unsigned int a_start     = delta_start + N - 1;
-
 namespace
 {
+    //Optimisation time
+    const double REFERENCE_SPEED     = 70.0;
+    const double LOOK_AHEAD_DISTANCE = 40.0;
+    const double MPC_TIME            = LOOK_AHEAD_DISTANCE / REFERENCE_SPEED;
+    const unsigned int N             = 20;
+    const double dt                  = MPC_TIME / N;
+
+    // The length from front to CoG that has a similar radius.
+    const double Lf = 2.67;
+
+    //Start indexes for states
+    unsigned int x_start     = 0;
+    unsigned int y_start     = x_start     + N;
+    unsigned int psi_start   = y_start     + N;
+    unsigned int v_start     = psi_start   + N;
+    unsigned int cte_start   = v_start     + N;
+    unsigned int epsi_start  = cte_start   + N;
+    unsigned int delta_start = epsi_start  + N;
+    unsigned int a_start     = delta_start + N - 1;
+
     AD<double> Poly3Eval(const Eigen::VectorXd& coeffs, AD<double> x)
     {
         AD<double> x2 = x * x;
@@ -92,7 +83,8 @@ class FG_eval
             // Minimize the value gap between sequential actuations.
             for(unsigned int t = 0; t < (N - 2); ++t)
             {
-                fg[0] += 300.0 * CppAD::pow((vars[delta_start + t + 1] - vars[delta_start + t]), 2);
+                //fg[0] += 500.0 * CppAD::pow((vars[delta_start + t + 1] - vars[delta_start + t]), 2);
+                fg[0] += (REFERENCE_SPEED * REFERENCE_SPEED) * CppAD::pow((vars[delta_start + t + 1] - vars[delta_start + t]), 2);
                 fg[0] += CppAD::pow((vars[a_start + t + 1] - vars[a_start + t]), 2);
             }
 
@@ -171,9 +163,21 @@ vector<double> MPC::Solve(const Eigen::VectorXd& state, const Eigen::VectorXd& c
 {
     typedef CPPAD_TESTVECTOR(double) Dvector;
 
-    std::cout << "Vehicle State: " << state << std::endl;
+    std::cout << "Vehicle State";
+    for(unsigned int i = 0; i < state.size(); ++i)
+    {
+        std::cout << ", " << state[i];
+    }
+    std::cout << std::endl;
 
     Eigen::VectorXd proj_state = ProjectState(state, coeffs, delay);
+
+    std::cout << "Projected State";
+    for(unsigned int i = 0; i < proj_state.size(); ++i)
+    {
+        std::cout << ", " << proj_state[i];
+    }
+    std::cout << std::endl;
 
     double x    = proj_state[0];
     double y    = proj_state[1];
@@ -181,8 +185,6 @@ vector<double> MPC::Solve(const Eigen::VectorXd& state, const Eigen::VectorXd& c
     double v    = proj_state[3];
     double cte  = proj_state[4];
     double epsi = proj_state[5];
-
-    std::cout << "Projected State: " << proj_state << std::endl;
 
     //Number of model varialbles including states and inputs
     unsigned int n_vars = N * 6 + (N - 1) * 2;
@@ -289,23 +291,32 @@ vector<double> MPC::Solve(const Eigen::VectorXd& state, const Eigen::VectorXd& c
         constraints_upperbound, fg_eval, solution);
 
     // Check some of the solution values
-    bool ok = true;
-    ok &= solution.status == CppAD::ipopt::solve_result<Dvector>::success;
+    //bool ok = true;
+    //ok &= solution.status == CppAD::ipopt::solve_result<Dvector>::success;
 
-    if(ok)
+    //if(ok)
+
+    if(solution.status == CppAD::ipopt::solve_result<Dvector>::success)
     {
         // Cost
-        auto cost = solution.obj_value;
+        auto cost              = solution.obj_value;
         double last_xtrk_error = solution.x[epsi_start  - 1];
         double last_hdg_error  = Rad2Deg(solution.x[delta_start - 1]);
+
         m_delta = solution.x[delta_start];
         m_a     = solution.x[a_start];
 
-        std::cout << "Cost "           << cost
-                  << ", XtrkError: "   << last_xtrk_error
-                  << ", HdgError: "    << last_hdg_error
-                  << ", Steer angle: " << Rad2Deg(m_delta)
-                  << ", Throttle: "    << m_a
+        std::cout << "MPC Solution"
+                  << ", Reference speed: "     << REFERENCE_SPEED
+                  << ", Look-ahead distance: " << LOOK_AHEAD_DISTANCE
+                  << ", Time: "                << MPC_TIME
+                  << ", Time step: "           << dt
+                  << ", Steps: "               << N
+                  << ", Cost: "                << cost
+                  << ", XtrkError: "           << last_xtrk_error
+                  << ", HdgError: "            << last_hdg_error
+                  << ", Steer angle: "         << Rad2Deg(m_delta)
+                  << ", Throttle: "            << m_a
                   << std::endl;
 
         m_solution_x.clear();
@@ -316,6 +327,10 @@ vector<double> MPC::Solve(const Eigen::VectorXd& state, const Eigen::VectorXd& c
             m_solution_x.push_back(solution.x[x_start + i]);
             m_solution_y.push_back(solution.x[y_start + i]);
         }
+    }
+    else
+    {
+        std::cout << "ERROR! MPC Solution UNSUCCESSFUL" << std::endl;
     }
 
     //Return the first actuator values.
@@ -336,21 +351,35 @@ Eigen::VectorXd MPC::ProjectState(const Eigen::VectorXd& state, const Eigen::Vec
 {
     Eigen::VectorXd projected(state.size());
 
-    double x    = state[0];
-    double y    = state[1];
-    double psi  = state[2];
-    double v    = state[3];
-    double cte  = state[4];
-    double epsi = state[5];
+    if(dt > 0.0)
+    {
+        double x    = state[0];
+        double y    = state[1];
+        double psi  = state[2];
+        double v    = state[3];
+        double cte  = state[4];
+        double epsi = state[5];
 
-    double x2    = x + v * cos(psi) * dt;
-    double y2    = y + v * sin(psi) * dt;
-    double psi2  = psi + v * m_delta * dt / Lf;
-    double v2    = v + m_a * dt;
-    double cte2  = cte  + v * sin(epsi) * dt;
-    double epsi2 = epsi + v * m_delta * dt / Lf;
+        double delta_psi = v * m_delta * dt / Lf;
 
-    projected << x2, y2, psi2, v2, cte2, epsi2;
+        double x2    = x    + v * cos(psi) * dt;
+        double y2    = y    + v * sin(psi) * dt;
+        double psi2  = psi  + delta_psi;
+        double v2    = v    + m_a * dt;
+        double cte2  = cte  + v * sin(epsi) * dt;
+        double epsi2 = epsi + delta_psi;
+
+        projected << x2, y2, psi2, v2, cte2, epsi2;
+
+        std::cout << "ProjectState with delay " << dt << std::endl;
+    }
+    else
+    {
+        projected = state;
+
+        std::cout << "ERROR! ProjectState with wrong delay " << dt << std::endl;
+    }
 
     return projected;
 }
+

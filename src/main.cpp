@@ -77,7 +77,9 @@ int main() {
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
     string sdata = string(data).substr(0, length);
-    cout << sdata << endl;
+
+    //cout << sdata << endl;
+
     if (sdata.size() > 2 && sdata[0] == '4' && sdata[1] == '2') {
       string s = hasData(sdata);
       if (s != "") {
@@ -143,17 +145,20 @@ int main() {
 
           //std::cout << "Vehicle states: " << state << std::endl;
 
-          const long DELAY_MS = 0; //100; //
+          const long DELAY_MS = 100;
 
           vector<double> solution = mpc.Solve(state, coeffs, (1.0e-3 * DELAY_MS));
 
-          double steer_value = -solution[0] / deg2rad(25.0);   //-0.01;
+          double steer_value = -solution[0] / deg2rad(25.0);
           if(steer_value >  1.0) steer_value =  1.0;
           if(steer_value < -1.0) steer_value = -1.0;
 
-          double throttle_value = solution[1]; //0.25;
+          double throttle_value = solution[1];
 
-          std::cout << "Steer angle: " << rad2deg(solution[0]) << ", Steer value: " << steer_value << ", Throttle: " << throttle_value << std::endl;
+          std::cout << "Steer angle solution: " << rad2deg(solution[0])
+                    << ", Steer value: "        << steer_value
+                    << ", Throttle value: "     << throttle_value
+                    << std::endl;
 
           json msgJson;
 
@@ -163,8 +168,6 @@ int main() {
           //Display the MPC predicted trajectory
           vector<double> mpc_x_vals = mpc.GetSolutionX();
           vector<double> mpc_y_vals = mpc.GetSolutionY();
-          //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
-          // the points in the simulator are connected by a Green line
 
           msgJson["mpc_x"] = mpc_x_vals;
           msgJson["mpc_y"] = mpc_y_vals;
@@ -173,14 +176,12 @@ int main() {
           vector<double> next_x_vals = local_ptsx;
           vector<double> next_y_vals = local_ptsy;
 
-          //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
-          // the points in the simulator are connected by a Yellow line
-
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
 
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
           //std::cout << msg << std::endl;
+
           // Latency
           // The purpose is to mimic real driving conditions where
           // the car does actuate the commands instantly.
@@ -190,6 +191,8 @@ int main() {
           //
           // NOTE: REMEMBER TO SET THIS TO 100 MILLISECONDS BEFORE
           // SUBMITTING.
+
+          std::cout << "Main thread delayed for " << DELAY_MS << "ms" << std::endl << std::endl;
           this_thread::sleep_for(chrono::milliseconds(DELAY_MS));
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
         }
