@@ -8,11 +8,15 @@ using CppAD::AD;
 namespace
 {
     //Optimisation time
-    const double REFERENCE_SPEED     = 70.0;
-    const double LOOK_AHEAD_DISTANCE = 40.0;
-    const double MPC_TIME            = LOOK_AHEAD_DISTANCE / REFERENCE_SPEED;
+    const double MAX_SPEED           = 100.0;
+
     const unsigned int N             = 20;
+
+    const double LOOK_AHEAD_DISTANCE = 50.0;
+    const double MPC_TIME            = LOOK_AHEAD_DISTANCE / MAX_SPEED;
     const double dt                  = MPC_TIME / N;
+
+    const double CURVATURE_SCALE     = 55.0;
 
     // The length from front to CoG that has a similar radius.
     const double Lf = 2.67;
@@ -27,6 +31,7 @@ namespace
     unsigned int delta_start = epsi_start  + N;
     unsigned int a_start     = delta_start + N - 1;
 
+    //Cubic polynomial calculation
     AD<double> Poly3Eval(const Eigen::VectorXd& coeffs, AD<double> x)
     {
         AD<double> x2 = x * x;
@@ -35,9 +40,25 @@ namespace
         return (coeffs[0] + coeffs[1] * x + coeffs[2] * x2 + coeffs[3] * x3);
     }
 
-    AD<double> Poly3DotEval(const Eigen::VectorXd& coeffs, AD<double> x)
+    //First derivative of cubic polynomial
+    AD<double> Poly3Dot1Eval(const Eigen::VectorXd& coeffs, AD<double> x)
     {
         return (coeffs[1] + 2.0 * x * coeffs[2] + 3.0 * x * x * coeffs[3]);
+    }
+
+    //Second derivative of cubic polynomial
+    AD<double> Poly3Dot2Eval(const Eigen::VectorXd& coeffs, AD<double> x)
+    {
+        return (2.0 * coeffs[2] + 6.0 * x * coeffs[3]);
+    }
+
+    //Curvature calculation
+    AD<double> Curvature(const Eigen::VectorXd& coeffs, AD<double> x)
+    {
+        AD<double> d2 = Poly3Dot2Eval(coeffs, x);
+        AD<double> d1 = Poly3Dot1Eval(coeffs, x);
+
+        return ( d2 / pow( (1.0 + d1 * d1), 1.5) );
     }
 
     double Rad2Deg(double rad)
@@ -62,6 +83,15 @@ class FG_eval
 
         void operator()(ADvector& fg, const ADvector& vars)
         {
+            AD<double> start_curvature = Curvature(coeffs, vars[x_start]);
+            AD<double> reference_speed = MAX_SPEED / (1.0 + CURVATURE_SCALE * fabs(start_curvature));
+
+            std::cout << "Start curvature: "   << start_curvature
+                      << ", Maximum speed: "   << MAX_SPEED
+                      << ", Curvature scale: " << CURVATURE_SCALE
+                      << ", Reference speed: " << reference_speed
+                      << std::endl;
+
             //Cost
             fg[0] = 0;
 
@@ -70,7 +100,7 @@ class FG_eval
             {
                 fg[0] += CppAD::pow(vars[cte_start  + t], 2);
                 fg[0] += CppAD::pow(vars[epsi_start + t], 2);
-                fg[0] += CppAD::pow((vars[v_start   + t] - REFERENCE_SPEED), 2);
+                fg[0] += CppAD::pow((vars[v_start   + t] - reference_speed), 2);
             }
 
             // Minimize the use of actuators.
@@ -83,17 +113,11 @@ class FG_eval
             // Minimize the value gap between sequential actuations.
             for(unsigned int t = 0; t < (N - 2); ++t)
             {
-                //fg[0] += 500.0 * CppAD::pow((vars[delta_start + t + 1] - vars[delta_start + t]), 2);
-                fg[0] += (REFERENCE_SPEED * REFERENCE_SPEED) * CppAD::pow((vars[delta_start + t + 1] - vars[delta_start + t]), 2);
+                fg[0] += (reference_speed * reference_speed) * CppAD::pow((vars[delta_start + t + 1] - vars[delta_start + t]), 2);
                 fg[0] += CppAD::pow((vars[a_start + t + 1] - vars[a_start + t]), 2);
             }
 
             // Setup Constraints
-            // NOTE: In this section you'll setup the model constraints.
-
-            // Initial constraints
-            // We add 1 to each of the starting indices due to cost being located at index 0 of fg
-            // This bumps up the position of all the other values.
             fg[1 + x_start]    = vars[x_start];
             fg[1 + y_start]    = vars[y_start];
             fg[1 + psi_start]  = vars[psi_start];
@@ -125,7 +149,7 @@ class FG_eval
                 AD<double> a0      = vars[a_start     + t - 1];
 
                 AD<double> f0      = Poly3Eval(coeffs, x0);
-                AD<double> psides0 = CppAD::atan(Poly3DotEval(coeffs, x0));
+                AD<double> psides0 = CppAD::atan(Poly3Dot1Eval(coeffs, x0));
 
                 //The idea here is to constraint this value to be 0.
                 //The equations for the model:
@@ -143,6 +167,7 @@ class FG_eval
                 fg[1 + cte_start  + t] = cte1  - ((y0 - f0) + (v0 * CppAD::sin(epsi0) * dt));
                 fg[1 + epsi_start + t] = epsi1 - ((psi0 - psides0) + v0 * delta0 / Lf * dt);
             }
+
         }
 };
 
@@ -232,8 +257,8 @@ vector<double> MPC::Solve(const Eigen::VectorXd& state, const Eigen::VectorXd& c
     // NOTE: Feel free to change this to something else.
     for(unsigned int i = a_start; i < n_vars; ++i)
     {
-        vars_lowerbound[i] = -1.0;
-        vars_upperbound[i] = 1.0;
+        vars_lowerbound[i] = -2.0;
+        vars_upperbound[i] =  2.0;
     }
 
     // Lower and upper limits for the constraints
@@ -290,12 +315,6 @@ vector<double> MPC::Solve(const Eigen::VectorXd& state, const Eigen::VectorXd& c
         options, vars, vars_lowerbound, vars_upperbound, constraints_lowerbound,
         constraints_upperbound, fg_eval, solution);
 
-    // Check some of the solution values
-    //bool ok = true;
-    //ok &= solution.status == CppAD::ipopt::solve_result<Dvector>::success;
-
-    //if(ok)
-
     if(solution.status == CppAD::ipopt::solve_result<Dvector>::success)
     {
         // Cost
@@ -307,7 +326,7 @@ vector<double> MPC::Solve(const Eigen::VectorXd& state, const Eigen::VectorXd& c
         m_a     = solution.x[a_start];
 
         std::cout << "MPC Solution"
-                  << ", Reference speed: "     << REFERENCE_SPEED
+                  << ", Maximum speed: "       << MAX_SPEED
                   << ", Look-ahead distance: " << LOOK_AHEAD_DISTANCE
                   << ", Time: "                << MPC_TIME
                   << ", Time step: "           << dt
