@@ -7,29 +7,23 @@ using CppAD::AD;
 
 namespace
 {
-    //Optimisation time
-    const double MAX_SPEED           = 100.0;
-
-    const unsigned int N             = 20;
-
-    const double LOOK_AHEAD_DISTANCE = 50.0;
-    const double MPC_TIME            = LOOK_AHEAD_DISTANCE / MAX_SPEED;
-    const double dt                  = MPC_TIME / N;
-
-    const double CURVATURE_SCALE     = 55.0;
+    const double MAX_SPEED       = 100.0;
+    const unsigned int N         = 20;
+    const double dt              = 0.025; //MPC_TIME / N;
+    const double CURVATURE_SCALE = 55.0;
 
     // The length from front to CoG that has a similar radius.
     const double Lf = 2.67;
 
     //Start indexes for states
-    unsigned int x_start     = 0;
-    unsigned int y_start     = x_start     + N;
-    unsigned int psi_start   = y_start     + N;
-    unsigned int v_start     = psi_start   + N;
-    unsigned int cte_start   = v_start     + N;
-    unsigned int epsi_start  = cte_start   + N;
-    unsigned int delta_start = epsi_start  + N;
-    unsigned int a_start     = delta_start + N - 1;
+    const unsigned int x_start     = 0;
+    const unsigned int y_start     = x_start     + N;
+    const unsigned int psi_start   = y_start     + N;
+    const unsigned int v_start     = psi_start   + N;
+    const unsigned int cte_start   = v_start     + N;
+    const unsigned int epsi_start  = cte_start   + N;
+    const unsigned int delta_start = epsi_start  + N;
+    const unsigned int a_start     = delta_start + N - 1;
 
     //Cubic polynomial calculation
     AD<double> Poly3Eval(const Eigen::VectorXd& coeffs, AD<double> x)
@@ -91,7 +85,6 @@ class FG_eval
                       << ", Curvature scale: " << CURVATURE_SCALE
                       << ", Reference speed: " << reference_speed
                       << std::endl;
-
             //Cost
             fg[0] = 0;
 
@@ -167,7 +160,6 @@ class FG_eval
                 fg[1 + cte_start  + t] = cte1  - ((y0 - f0) + (v0 * CppAD::sin(epsi0) * dt));
                 fg[1 + epsi_start + t] = epsi1 - ((psi0 - psides0) + v0 * delta0 / Lf * dt);
             }
-
         }
 };
 
@@ -327,10 +319,8 @@ vector<double> MPC::Solve(const Eigen::VectorXd& state, const Eigen::VectorXd& c
 
         std::cout << "MPC Solution"
                   << ", Maximum speed: "       << MAX_SPEED
-                  << ", Look-ahead distance: " << LOOK_AHEAD_DISTANCE
-                  << ", Time: "                << MPC_TIME
-                  << ", Time step: "           << dt
                   << ", Steps: "               << N
+                  << ", Time step: "           << dt
                   << ", Cost: "                << cost
                   << ", XtrkError: "           << last_xtrk_error
                   << ", HdgError: "            << last_hdg_error

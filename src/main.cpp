@@ -95,17 +95,6 @@ int main() {
           double psi = j[1]["psi"];
           double v   = j[1]["speed"];
 
-          /*
-          for(unsigned int i = 0; i < ptsx.size(); ++i)
-          {
-              double d = sqrt( (ptsx[i] - px) * (ptsx[i] - px) + (ptsy[i] - py) * (ptsy[i] - py));
-
-              std::cout << "Original reference point, " << ptsx[i] << ", " << ptsy[i] << ", " << d << std::endl;
-          }
-
-          std::cout << "Vehicle point, " << px << ", " << py << ", " << rad2deg(psi) << std::endl;
-          */
-
           vector<double> local_ptsx(ptsx.size());
           vector<double> local_ptsy(ptsy.size());
 
@@ -125,30 +114,23 @@ int main() {
 
               local_ptsy[i]  = -temp_x * sin(psi) + temp_y * cos(psi);
               reference_y[i] = local_ptsy[i];
-
-              //double d = sqrt(reference_x[i] * reference_x[i] + reference_y[i] * reference_y[i]);
-              //std::cout << "Transf. reference point, " << reference_x[i] << ", " << reference_y[i] << ", " << d << std::endl;
           }
 
-          //std::cout << "New vehicle point, " << 0.0 << ", " << 0.0 << std::endl;
-
           Eigen::VectorXd coeffs = polyfit(reference_x, reference_y, 3);
-          //std::cout << "Coeffs: " << coeffs << std::endl;
 
           //In ENU counter clockwise positive
           double cte  = 0.0 - coeffs[0];
           double epsi = 0.0 - atan(coeffs[1]);
-          //std::cout << "Path Y: " << coeffs[0] << ", Xtk error: " << cte << ", Path Hdg: " << rad2deg(atan(coeffs[1])) << ", Hdg error: " << rad2deg(epsi) << std::endl;
 
           Eigen::VectorXd state(6);
           state << 0.0, 0.0, 0.0, v, cte, epsi;
 
-          //std::cout << "Vehicle states: " << state << std::endl;
-
+          //Delay 100 ms
           const long DELAY_MS = 100;
 
           vector<double> solution = mpc.Solve(state, coeffs, (1.0e-3 * DELAY_MS));
 
+          //Negate steering angle to right positive, left negative
           double steer_value = -solution[0] / deg2rad(25.0);
           if(steer_value >  1.0) steer_value =  1.0;
           if(steer_value < -1.0) steer_value = -1.0;
