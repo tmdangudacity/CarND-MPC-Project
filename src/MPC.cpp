@@ -8,9 +8,9 @@ using CppAD::AD;
 namespace
 {
     const double MAX_SPEED       = 100.0;
-    const unsigned int N         = 20;
-    const double dt              = 0.025; //MPC_TIME / N;
-    const double CURVATURE_SCALE = 55.0;
+    const unsigned int N         = 10;
+    const double dt              = 0.05;
+    const double CURVATURE_SCALE = 25.0;
 
     // The length from front to CoG that has a similar radius.
     const double Lf = 2.67;
@@ -77,6 +77,7 @@ class FG_eval
 
         void operator()(ADvector& fg, const ADvector& vars)
         {
+            //Curvature adaptation for reference speed
             AD<double> start_curvature = Curvature(coeffs, vars[x_start]);
             AD<double> reference_speed = MAX_SPEED / (1.0 + CURVATURE_SCALE * fabs(start_curvature));
 
@@ -85,6 +86,7 @@ class FG_eval
                       << ", Curvature scale: " << CURVATURE_SCALE
                       << ", Reference speed: " << reference_speed
                       << std::endl;
+
             //Cost
             fg[0] = 0;
 
