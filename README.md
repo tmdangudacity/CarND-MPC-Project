@@ -68,7 +68,7 @@ The code is compiled without errors or warnings.
 
 ### Implementation
 
-** The Model: **
+**The Model**
 
 The vehicle's kinematics model (including cross track error and heading error terms) which was used in the implementation is the same as the one provided in the lessons. The update equations are as following:
 
@@ -101,7 +101,7 @@ cte: vehicle's cross track error
 
 epsi: vehicle's heading error
 
-** Number of timestep N and elapsed duration dt: **
+**Number of timestep N and elapsed duration dt**
 
 The values of timesteps N and elapsed duration dt are to minimise the cost function for each iteration of vehicle and path inputs.
 
@@ -144,7 +144,7 @@ A small value of N would cause the solution not be optimal and the cross track e
 The best combination of N and dt was N = 10 and dt = 0.05 second.
 
 
-** Polynomial Fitting and MPC Preprocessing: **
+**Polynomial Fitting and MPC Preprocessing**
 
 The reference waypoints were first transformed from the global coordinate frame to the local frame at the  vehicle position with the X-axis along the vehicle heading and the Y-axis to the left.
 
@@ -192,7 +192,7 @@ The code of the transformation is in [main.cpp](./src/main.cpp) as follows:
           double epsi = 0.0 - atan(coeffs[1]);
 ```
 
-** Model Predictive Control with Latency: **
+**Model Predictive Control with Latency**
 
 To handle the actuation latency, a projection forward of vehicle states was implemented in [MPC.cpp](./src/MPC.cpp) as follows:
 
